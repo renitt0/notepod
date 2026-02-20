@@ -8,13 +8,25 @@ export function AuthProvider({ children }) {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (userId) => {
-        const { data } = await supabase
+    // Fetch profile — fire-and-forget, never blocks auth flow
+    const fetchProfile = (userId) => {
+        supabase
             .from('profiles')
             .select('*')
             .eq('id', userId)
-            .single();
-        setProfile(data);
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (error) {
+                    console.warn('[Notepod] Profile fetch skipped:', error.message);
+                    setProfile(null);
+                } else {
+                    setProfile(data);
+                }
+            })
+            .catch((err) => {
+                console.warn('[Notepod] Profile fetch error:', err.message);
+                setProfile(null);
+            });
     };
 
     useEffect(() => {
@@ -30,11 +42,11 @@ export function AuthProvider({ children }) {
 
         // Subscribe to auth state changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (_event, session) => {
+            (_event, session) => {
                 const currentUser = session?.user ?? null;
                 setUser(currentUser);
                 if (currentUser) {
-                    await fetchProfile(currentUser.id);
+                    fetchProfile(currentUser.id);
                 } else {
                     setProfile(null);
                 }
@@ -49,11 +61,16 @@ export function AuthProvider({ children }) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
 
+        // Attempt to create profile — don't block auth flow
         if (data.user) {
-            const { error: profileError } = await supabase
+            supabase
                 .from('profiles')
-                .insert({ id: data.user.id, username });
-            if (profileError) throw profileError;
+                .insert({ id: data.user.id, username, email })
+                .then(({ error: profileError }) => {
+                    if (profileError) {
+                        console.warn('[Notepod] Profile insert failed:', profileError.message);
+                    }
+                });
         }
 
         return data;

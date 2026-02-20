@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 
@@ -6,103 +6,93 @@ export function useNotes(podId = null) {
     const { user } = useAuth();
     const [notes, setNotes] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const fetchNotes = useCallback(async () => {
         if (!user) return;
-        setLoading(true);
+        try {
+            setLoading(true);
+            let query = supabase
+                .from('notes')
+                .select('*')
+                .order('updated_at', { ascending: false });
 
-        let query = supabase.from('notes').select('*');
+            if (podId) {
+                query = query.eq('pod_id', podId);
+            }
 
-        if (podId) {
-            query = query.eq('pod_id', podId);
-        } else {
-            // Personal notes — notes owned by this user
-            query = query.eq('owner_id', user.id);
+            const { data, error } = await query;
+
+            if (error) throw error;
+            setNotes(data || []);
+        } catch (err) {
+            console.error('Error fetching notes:', err);
+            setError(err.message);
+            setNotes([]);
+        } finally {
+            setLoading(false);
         }
-
-        query = query.order('created_at', { ascending: false });
-
-        const { data, error } = await query;
-
-        if (error) {
-            console.error('Error fetching notes:', error);
-        } else {
-            setNotes(data ?? []);
-        }
-        setLoading(false);
     }, [user, podId]);
 
+    // Auto-fetch on mount and when dependencies change
     useEffect(() => {
         fetchNotes();
     }, [fetchNotes]);
 
-    const createNote = async ({ title, content, pod_id }) => {
-        const { data, error } = await supabase
-            .from('notes')
-            .insert({
-                title,
-                content,
-                pod_id: pod_id ?? podId,
-                owner_id: user.id,
-            })
-            .select()
-            .single();
+    const createNote = async (title, content, podIdOverride = null) => {
+        if (!user) return;
+        try {
+            const targetPodId = podIdOverride || podId;
+            const insertData = { title, content };
+            if (targetPodId) insertData.pod_id = targetPodId;
 
-        if (error) throw error;
-        await fetchNotes();
-        return data;
+            const { data, error } = await supabase
+                .from('notes')
+                .insert([insertData])
+                .select()
+                .single();
+
+            if (error) throw error;
+            setNotes((prev) => [data, ...prev]);
+            return data;
+        } catch (err) {
+            console.error('Error creating note:', err);
+            throw err;
+        }
     };
 
-    const updateNote = async (noteId, { title, content }) => {
-        // Fetch current version before updating to snapshot history
-        const { data: current, error: fetchError } = await supabase
-            .from('notes')
-            .select('content')
-            .eq('id', noteId)
-            .single();
+    const updateNote = async (id, updates) => {
+        try {
+            const { data, error } = await supabase
+                .from('notes')
+                .update(updates)
+                .eq('id', id)
+                .select()
+                .single();
 
-        if (fetchError) throw fetchError;
-
-        // Insert previous version into note_history
-        const { error: historyError } = await supabase
-            .from('note_history')
-            .insert({
-                note_id: noteId,
-                edited_by: user.id,
-                content_snapshot: current.content,
-            });
-
-        if (historyError) throw historyError;
-
-        // Now update the note
-        const { data, error } = await supabase
-            .from('notes')
-            .update({ title, content })
-            .eq('id', noteId)
-            .select()
-            .single();
-
-        if (error) throw error;
-        await fetchNotes();
-        return data;
+            if (error) throw error;
+            setNotes((prev) => prev.map(n => n.id === id ? data : n));
+            return data;
+        } catch (err) {
+            console.error('Error updating note:', err);
+            throw err;
+        }
     };
 
-    const deleteNote = async (noteId) => {
-        const { error } = await supabase
-            .from('notes')
-            .delete()
-            .eq('id', noteId);
+    const deleteNote = async (id) => {
+        try {
+            const { error } = await supabase
+                .from('notes')
+                .delete()
+                .eq('id', id);
 
-        if (error) throw error;
-        await fetchNotes();
+            if (error) throw error;
+            setNotes((prev) => prev.filter(n => n.id !== id));
+        } catch (err) {
+            console.error('Error deleting note:', err);
+            throw err;
+        }
     };
 
-    return {
-        notes,
-        loading,
-        fetchNotes,
-        createNote,
-        updateNote,
-        deleteNote,
-    };
+    return { notes, loading, error, fetchNotes, createNote, updateNote, deleteNote };
 }

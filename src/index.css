@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/* Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Tailwind v4 Theme Configuration ─── */
+@theme {
+    --color-primary: #70CE41;
+    --color-background-light: #f6f8f6;
+    --color-background-dark: #161f13;
+
+    --font-display: "Inter", sans-serif;
+    --font-serif: "Lora", serif;
+
+    --radius: 1rem;
+    --radius-lg: 2rem;
+    --radius-xl: 3rem;
+    --radius-full: 9999px;
+}
+
+/* ─── Global Base Styles ─── */
+body {
+    font-family: var(--font-display);
+    @apply bg-background-light text-slate-900 dark:bg-background-dark dark:text-white transition-colors duration-300;
+}
+
+/* ─── Custom Scrollbar ─── */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+}

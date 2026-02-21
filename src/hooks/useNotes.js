@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../api/supabaseClient';
 import { useAuth } from './useAuth';
 
@@ -7,6 +7,7 @@ export function useNotes(podId = null) {
     const [notes, setNotes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const channelRef = useRef(null);
 
     const fetchNotes = useCallback(async () => {
         if (!user) return;
@@ -22,7 +23,6 @@ export function useNotes(podId = null) {
             }
 
             const { data, error } = await query;
-
             if (error) throw error;
             setNotes(data || []);
         } catch (err) {
@@ -39,6 +39,57 @@ export function useNotes(podId = null) {
         fetchNotes();
     }, [fetchNotes]);
 
+    // Realtime subscription for live collaboration
+    useEffect(() => {
+        if (!user) return;
+
+        // Clear any existing channel before creating a new one
+        if (channelRef.current) {
+            supabase.removeChannel(channelRef.current);
+        }
+
+        const channelName = podId ? `notes-pod-${podId}` : 'notes-all';
+        const filter = podId ? `pod_id=eq.${podId}` : undefined;
+
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'notes', ...(filter ? { filter } : {}) },
+                (payload) => {
+                    setNotes(prev => {
+                        // Avoid duplicate if we already have it (from optimistic update)
+                        if (prev.some(n => n.id === payload.new.id)) return prev;
+                        return [payload.new, ...prev];
+                    });
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'notes', ...(filter ? { filter } : {}) },
+                (payload) => {
+                    setNotes(prev => prev.map(n => n.id === payload.new.id ? payload.new : n));
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'DELETE', schema: 'public', table: 'notes', ...(filter ? { filter } : {}) },
+                (payload) => {
+                    setNotes(prev => prev.filter(n => n.id !== payload.old.id));
+                }
+            )
+            .subscribe();
+
+        channelRef.current = channel;
+
+        return () => {
+            if (channelRef.current) {
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
+        };
+    }, [user, podId]);
+
     const createNote = async (title, content, podIdOverride = null) => {
         if (!user) return;
         try {
@@ -53,6 +104,7 @@ export function useNotes(podId = null) {
                 .single();
 
             if (error) throw error;
+            // Optimistically add — realtime will deduplicate
             setNotes((prev) => [data, ...prev]);
             return data;
         } catch (err) {

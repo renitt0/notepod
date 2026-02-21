@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useNotes } from '../hooks/useNotes';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../context/ToastContext';
 
 export default function NoteEditor() {
     const { id } = useParams();
@@ -11,11 +12,16 @@ export default function NoteEditor() {
     const { createNote, updateNote, deleteNote, notes, fetchNotes, loading: notesLoading } = useNotes();
     const { profile } = useAuth();
 
+    const toast = useToast();
+    const autoSaveTimerRef = useRef(null);
+
     // Editor State
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
+    const [noteDate, setNoteDate] = useState(null);
     const [loading, setLoading] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     // UI State (Reader Mode)
     const [fontSize, setFontSize] = useState(18);
@@ -38,6 +44,7 @@ export default function NoteEditor() {
             if (found) {
                 setTitle(found.title || '');
                 setContent(found.content || '');
+                setNoteDate(found.created_at || null);
             }
         }
     }, [id, notes, isNew]);
@@ -49,10 +56,10 @@ export default function NoteEditor() {
         }
     }, [isNew, notes.length, fetchNotes]);
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async (silent = false) => {
         if (isReadOnly) return;
         setLoading(true);
-        setSaved(false);
+        if (!silent) setSaved(false);
         try {
             if (isNew) {
                 const newNote = await createNote(title || 'Untitled', content, podIdFromQuery);
@@ -62,36 +69,50 @@ export default function NoteEditor() {
             }
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
+            if (!silent) toast.success('Note saved!');
         } catch (error) {
             console.error(error);
-            alert('Failed to save: ' + error.message);
+            toast.error('Failed to save: ' + error.message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [isReadOnly, isNew, title, content, podIdFromQuery, id, createNote, updateNote, navigate]);
 
     const handleDelete = async () => {
         if (isNew || isReadOnly) return;
-        if (!confirm('Are you sure you want to delete this note?')) return;
         try {
             await deleteNote(id);
             navigate('/dashboard', { replace: true });
+            toast.success('Note deleted.');
         } catch (error) {
-            alert('Failed to delete: ' + error.message);
+            toast.error('Failed to delete: ' + error.message);
+        } finally {
+            setShowDeleteConfirm(false);
         }
     };
+
+    // Auto-save: debounce 1.5s after user stops typing (only for existing notes)
+    useEffect(() => {
+        if (isNew || isReadOnly || notesLoading) return;
+        if (!title && !content) return;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => {
+            handleSave(true); // silent = don't show toast on autosave
+        }, 1500);
+        return () => clearTimeout(autoSaveTimerRef.current);
+    }, [title, content]);
 
     // Keyboard shortcut: Ctrl+S to save
     useEffect(() => {
         const handleKeyDown = (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
-                handleSave();
+                handleSave(false);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [title, content, isNew, id]);
+    }, [handleSave]);
 
     const statusText = loading ? 'Saving...' : saved ? 'Saved!' : isNew ? 'New Draft' : 'Draft';
 
@@ -122,7 +143,7 @@ export default function NoteEditor() {
                     </button>
                     {!isReadOnly && !isNew && (
                         <button
-                            onClick={handleDelete}
+                            onClick={() => setShowDeleteConfirm(true)}
                             className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
                             title="Delete Note"
                         >
@@ -141,6 +162,27 @@ export default function NoteEditor() {
                     )}
                 </div>
             </header>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteConfirm(false)}>
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-100 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-center size-12 rounded-full bg-red-50 dark:bg-red-500/10 mx-auto mb-4">
+                            <span className="material-symbols-outlined text-red-500 text-[24px]">delete_forever</span>
+                        </div>
+                        <h3 className="text-lg font-bold text-center text-slate-900 dark:text-white">Delete Note?</h3>
+                        <p className="text-sm text-slate-500 text-center mt-2 mb-6">This action cannot be undone. The note will be permanently deleted.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 h-11 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleDelete} className="flex-1 h-11 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full transition-colors">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex flex-1 overflow-hidden relative">
                 {/* Side Panel (Typography Settings) */}
@@ -227,7 +269,7 @@ export default function NoteEditor() {
                                 readOnly={isReadOnly || notesLoading}
                             />
                             <div className="flex items-center gap-4 text-slate-400 text-sm font-medium border-b border-slate-100 dark:border-slate-800 pb-6">
-                                <span>{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                <span>{(noteDate ? new Date(noteDate) : new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                 <span className="size-1 rounded-full bg-slate-300"></span>
                                 <span>{wordCount.toLocaleString()} words</span>
                             </div>
@@ -262,7 +304,7 @@ export default function NoteEditor() {
                     <span>UTF-8</span>
                     <span>{wordCount} words</span>
                     <button onClick={() => setShowTypography(!showTypography)} className="hover:text-primary transition-colors">
-                        {showTypography ? 'Focus Mode' : 'Exit Focus'}
+                        {showTypography ? 'Hide Panel' : 'Show Panel'}
                     </button>
                 </div>
             </footer>

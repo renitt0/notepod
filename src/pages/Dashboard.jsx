@@ -1,6 +1,8 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import FeedSidebar from '../components/FeedSidebar';
+import PodCard from '../components/PodCard';
 import { useNotes } from '../hooks/useNotes';
+import { usePods } from '../hooks/usePods';
 import Loader from '../components/Loader';
 import { useAuth } from '../hooks/useAuth';
 import { useMemo } from 'react';
@@ -8,6 +10,7 @@ import { SearchOffIcon, DescriptionIcon, ArrowForwardIcon } from '../components/
 
 export default function Dashboard() {
     const { notes, loading: notesLoading } = useNotes();
+    const { pods, loading: podsLoading } = usePods();
     const { profile } = useAuth();
     const [searchParams] = useSearchParams();
     const query = searchParams.get('q') || '';
@@ -41,7 +44,24 @@ export default function Dashboard() {
                         </Link>
                     </div>
 
-                    {/* Note Grid */}
+                    {/* Pods Section — only shown when not searching */}
+                    {!query && !podsLoading && pods.length > 0 && (
+                        <div className="mb-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Your Pods</h3>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                {pods.map(pod => <PodCard key={pod.id} pod={pod} />)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Notes header */}
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">
+                            {query ? `Results for "${query}"` : 'Recent Notes'}
+                        </h3>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {filteredNotes.length === 0 ? (
                             <div className="col-span-full text-center text-slate-400 py-16">

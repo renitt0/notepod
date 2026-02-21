@@ -2,14 +2,19 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { usePods } from '../hooks/usePods';
 import { useAuth } from '../hooks/useAuth';
+import { useNotes } from '../hooks/useNotes';
+import { useToast } from '../context/ToastContext';
 import { LogoIcon, CloseIcon, AddCircleIcon, EditNoteIcon, FolderIcon, SettingsIcon } from './Icons';
 
 export default function Sidebar({ isOpen, onClose }) {
     const location = useLocation();
     const { pods, createPod, loading: podsLoading } = usePods();
     const { profile, loading: authLoading } = useAuth();
+    const { notes } = useNotes();
+    const toast = useToast();
     const [showCreatePod, setShowCreatePod] = useState(false);
     const [newPodName, setNewPodName] = useState('');
+    const [newPodDesc, setNewPodDesc] = useState('');
     const [creating, setCreating] = useState(false);
 
     if (authLoading) {
@@ -34,11 +39,13 @@ export default function Sidebar({ isOpen, onClose }) {
         if (!newPodName.trim()) return;
         setCreating(true);
         try {
-            await createPod(newPodName.trim());
+            await createPod(newPodName.trim(), newPodDesc.trim());
             setNewPodName('');
+            setNewPodDesc('');
             setShowCreatePod(false);
+            toast.success(`Pod "${newPodName.trim()}" created!`);
         } catch (err) {
-            alert('Failed to create pod: ' + err.message);
+            toast.error('Failed to create pod: ' + err.message);
         } finally {
             setCreating(false);
         }
@@ -131,15 +138,17 @@ export default function Sidebar({ isOpen, onClose }) {
 
                     {/* Bottom Sidebar */}
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-auto">
-                        <div className="px-4 mb-4 hidden lg:block"> {/* Hide stats on mobile if cluttered */}
-                            <div className="flex justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">
-                                <span>Storage</span>
-                                <span>82%</span>
+                        <div className="px-4 mb-4 hidden lg:block">
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="flex flex-col items-center flex-1 bg-slate-50 dark:bg-slate-800/50 rounded-xl py-3 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-lg font-extrabold text-slate-900 dark:text-white leading-none">{notes.length}</span>
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Notes</span>
+                                </div>
+                                <div className="flex flex-col items-center flex-1 bg-slate-50 dark:bg-slate-800/50 rounded-xl py-3 border border-slate-100 dark:border-slate-800">
+                                    <span className="text-lg font-extrabold text-slate-900 dark:text-white leading-none">{allPods.length}</span>
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-0.5">Pods</span>
+                                </div>
                             </div>
-                            <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full w-[82%]"></div>
-                            </div>
-                            <p className="text-[10px] text-slate-400 mt-1">4.1 GB of 5 GB used</p>
                         </div>
                         <div className="flex flex-col gap-1">
                             <Link
@@ -157,14 +166,14 @@ export default function Sidebar({ isOpen, onClose }) {
 
             {/* Create Pod Modal - Ensure z-index is higher than sidebar if open */}
             {showCreatePod && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 transition-opacity animate-in fade-in duration-200" onClick={() => setShowCreatePod(false)}>
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 transition-opacity animate-in fade-in duration-200" onClick={() => { setShowCreatePod(false); setNewPodName(''); setNewPodDesc(''); }}>
                     <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100 dark:border-slate-800 transform transition-all scale-100 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                         <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Create New Pod</h2>
                         <p className="text-sm text-slate-500 mb-6">Organize your notes in collaborative workspaces.</p>
 
                         <div className="space-y-4">
                             <div>
-                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1 block">Pod Name</label>
+                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1 block">Pod Name <span className="text-red-400">*</span></label>
                                 <input
                                     value={newPodName}
                                     onChange={e => setNewPodName(e.target.value)}
@@ -174,10 +183,20 @@ export default function Sidebar({ isOpen, onClose }) {
                                     onKeyDown={e => e.key === 'Enter' && handleCreatePod()}
                                 />
                             </div>
+                            <div>
+                                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1 block">Description <span className="text-slate-400 font-normal">(optional)</span></label>
+                                <textarea
+                                    value={newPodDesc}
+                                    onChange={e => setNewPodDesc(e.target.value)}
+                                    placeholder="What's this pod for?"
+                                    rows={3}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-slate-900 dark:text-white placeholder:text-slate-400 text-sm resize-none"
+                                />
+                            </div>
                         </div>
 
                         <div className="flex gap-3 mt-6">
-                            <button onClick={() => setShowCreatePod(false)} className="flex-1 h-11 border border-slate-200 dark:border-slate-700 rounded-full text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                            <button onClick={() => { setShowCreatePod(false); setNewPodName(''); setNewPodDesc(''); }} className="flex-1 h-11 border border-slate-200 dark:border-slate-700 rounded-full text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                                 Cancel
                             </button>
                             <button

@@ -10,6 +10,7 @@ export default function Signup() {
     const [username, setUsername] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     // Redirect when auth state confirms the user is logged in
     useEffect(() => {
@@ -53,7 +54,8 @@ export default function Signup() {
                         </div>
 
                         {error && (
-                            <div className="bg-red-50 text-red-500 text-sm p-3 rounded-lg border border-red-100">
+                            <div className="bg-red-50 dark:bg-red-500/10 text-red-500 text-sm p-3 rounded-xl border border-red-100 dark:border-red-500/20 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[18px]">error</span>
                                 {error}
                             </div>
                         )}
@@ -97,9 +99,18 @@ export default function Signup() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="w-full pl-12 pr-12 h-14 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-full focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
                                         placeholder="••••••••"
-                                        type="password"
+                                        type={showPassword ? 'text' : 'password'}
                                         required
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                                    >
+                                        <span className="material-symbols-outlined">
+                                            {showPassword ? 'visibility_off' : 'visibility'}
+                                        </span>
+                                    </button>
                                 </div>
                             </div>
                         </div>

@@ -4,14 +4,17 @@ import { usePods } from '../hooks/usePods';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import Loader from '../components/Loader';
+import MemberManagerModal from '../components/MemberManagerModal';
 
 export default function PodView() {
     const { id: podId } = useParams();
     const { notes, loading } = useNotes(podId);
-    const { pods } = usePods();
+    const { pods, fetchPodMembers, addMemberByUsername, removeMember, updateMemberRole } = usePods();
     const { profile } = useAuth();
     const [pod, setPod] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [showMembers, setShowMembers] = useState(false);
+    const [memberCount, setMemberCount] = useState(null);
 
     const canManage = profile?.role === 'admin' || profile?.role === 'creator';
     const canCreate = profile?.role !== 'read_only';
@@ -22,6 +25,15 @@ export default function PodView() {
             if (found) setPod(found);
         }
     }, [pods, podId]);
+
+    // Fetch member count for header display
+    useEffect(() => {
+        if (podId) {
+            fetchPodMembers(podId)
+                .then(members => setMemberCount(members.length))
+                .catch(() => setMemberCount(null));
+        }
+    }, [podId]);
 
     const filteredNotes = useMemo(() => {
         if (!searchQuery) return notes;
@@ -63,13 +75,19 @@ export default function PodView() {
                 </div>
 
                 <div className="flex items-center gap-2 lg:gap-4 flex-shrink-0">
-                    <div className="hidden sm:flex -space-x-3 overflow-hidden">
-                        <div className="flex size-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 ring-2 ring-white dark:ring-background-dark text-[10px] font-bold text-slate-500">
-                            +1
+                    {/* Real member count badge */}
+                    {memberCount !== null && (
+                        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full">
+                            <span className="material-symbols-outlined text-[16px]">group</span>
+                            {memberCount} {memberCount === 1 ? 'member' : 'members'}
                         </div>
-                    </div>
+                    )}
                     {canManage && (
-                        <button className="hidden sm:flex items-center justify-center rounded-full h-10 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                        <button
+                            onClick={() => setShowMembers(true)}
+                            className="hidden sm:flex items-center justify-center rounded-full h-10 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors gap-2"
+                        >
+                            <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
                             Members
                         </button>
                     )}
@@ -155,6 +173,23 @@ export default function PodView() {
             <Link to={`/note/new?podId=${podId}`} className="fixed bottom-6 right-6 lg:hidden size-14 bg-primary rounded-full text-white shadow-lg flex items-center justify-center z-50 hover:scale-105 active:scale-95 transition-all">
                 <span className="material-symbols-outlined text-[28px]">add</span>
             </Link>
+
+            {/* Member Manager Modal */}
+            <MemberManagerModal
+                isOpen={showMembers}
+                onClose={() => {
+                    setShowMembers(false);
+                    // Refresh member count after closing
+                    fetchPodMembers(podId)
+                        .then(members => setMemberCount(members.length))
+                        .catch(() => { });
+                }}
+                podId={podId}
+                fetchPodMembers={fetchPodMembers}
+                addMemberByUsername={addMemberByUsername}
+                removeMember={removeMember}
+                updateMemberRole={updateMemberRole}
+            />
         </div>
     );
 }
